@@ -1,0 +1,7 @@
+{
+  "name": "OMG It's So Sick Babygirl Kingdom Big Media Mega Empire",
+  "description": "A nostalgic, pastel-drenched blog and community portal inspired by 2011 girly internet culture, featuring interactive AI-powered aesthetic oracles.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
