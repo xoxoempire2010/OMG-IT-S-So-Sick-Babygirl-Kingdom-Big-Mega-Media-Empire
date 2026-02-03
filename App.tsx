@@ -16,13 +16,13 @@ import PressPage from './components/PressPage';
 import PressEditor from './components/PressEditor';
 import { BLOG_POSTS, EMPIRE_LOGO, MEDIA_ITEMS, DEFAULT_PRESS_CONTENT } from './constants';
 import { Category, BlogPost, MediaItem, MediaType, AppPages, PressContent, ImperialLocation, ConnectivityMode } from './types';
-// Added Home to imports to resolve "Cannot find name 'Home'" error
-import { Sparkles, Heart, Star, Cloud, Ghost, X, Crown, ShieldCheck, Plus, LayoutGrid, Shield, Mail, Play, Volume2, Maximize, Pause, Clock, Info, Monitor, Minimize2, MoveHorizontal, Tv, Settings, SkipBack, SkipForward, VolumeX, Ratio, List, Zap, Activity, Wifi, WifiOff, MapPin, Car, Coffee, Gamepad2, Home } from 'lucide-react';
+import { Sparkles, Heart, Star, Cloud, Ghost, X, Crown, ShieldCheck, Plus, LayoutGrid, Shield, Mail, Play, Volume2, Maximize, Pause, Clock, Info, Monitor, Minimize2, MoveHorizontal, Tv, Settings, SkipBack, SkipForward, VolumeX, Ratio, List, Zap, Activity, Wifi, WifiOff, MapPin, Car, Coffee, Gamepad2, Home, Download, Trash2, Signal } from 'lucide-react';
 
 const USER_POSTS_KEY = 'issb_user_posts';
 const USER_MEDIA_KEY = 'issb_user_media';
 const PRESS_CONTENT_KEY = 'issb_press_content';
 const THEME_KEY = 'issb_dark_mode';
+const OFFLINE_CACHE_KEY = 'issb_offline_cache';
 
 const App: React.FC = () => {
   const [activePage, setActivePage] = useState<AppPages>('home');
@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [userPosts, setUserPosts] = useState<BlogPost[]>([]);
   const [userMedia, setUserMedia] = useState<MediaItem[]>([]);
+  const [offlineCache, setOfflineCache] = useState<string[]>([]); // Array of IDs
   const [pressContent, setPressContent] = useState<PressContent>(DEFAULT_PRESS_CONTENT);
   const [showManifesto, setShowManifesto] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -48,6 +49,8 @@ const App: React.FC = () => {
     if (savedMedia) setUserMedia(JSON.parse(savedMedia));
     const savedPress = localStorage.getItem(PRESS_CONTENT_KEY);
     if (savedPress) setPressContent(JSON.parse(savedPress));
+    const savedCache = localStorage.getItem(OFFLINE_CACHE_KEY);
+    if (savedCache) setOfflineCache(JSON.parse(savedCache));
     const savedTheme = localStorage.getItem(THEME_KEY);
     const initialDark = savedTheme ? savedTheme === 'true' : window.matchMedia('(prefers-color-scheme: dark)').matches;
     setIsDarkMode(initialDark);
@@ -97,6 +100,14 @@ const App: React.FC = () => {
     setActivePage(newItem.type === 'movie' ? 'cinema' : 'tvlab');
   };
 
+  const handleToggleCache = (id: string) => {
+    const updated = offlineCache.includes(id) 
+      ? offlineCache.filter(item => item !== id)
+      : [...offlineCache, id];
+    setOfflineCache(updated);
+    localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify(updated));
+  };
+
   const handleSavePress = (newContent: PressContent) => {
     setPressContent(newContent);
     localStorage.setItem(PRESS_CONTENT_KEY, JSON.stringify(newContent));
@@ -121,12 +132,18 @@ const App: React.FC = () => {
       <main className="container mx-auto pb-24 relative">
         {/* Context Control Panel - Floating */}
         <div className="fixed top-24 right-6 z-[100] flex flex-col gap-3">
-           <ContextPanel location={location} onSetLocation={setLocation} connectivity={connectivity} onSetConnectivity={setConnectivity} />
+           <ContextPanel 
+             location={location} 
+             onSetLocation={setLocation} 
+             connectivity={connectivity} 
+             onSetConnectivity={setConnectivity} 
+             cacheCount={offlineCache.length}
+           />
         </div>
 
         {activePage === 'home' && (
           <div className="px-6">
-            <EmpireLiveTicker location={location} />
+            <EmpireLiveTicker location={location} connectivity={connectivity} />
             <Hero onExplore={() => handleNavigate('blog')} onShowManifesto={() => setShowManifesto(true)} onUpload={handleOpenUploadModal} />
             <PreferenceProfiler />
             <FeaturedGrid posts={allPosts.slice(0, 3)} onPostClick={(id) => { setSelectedPostId(id); setActivePage('post'); }} />
@@ -142,8 +159,19 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activePage === 'cinema' && <MediaCenter location={location} connectivity={connectivity} initialType="movie" items={allMedia} onUploadType={(type) => handleSelectUpload('media', type)} onWatchMedia={handleWatchMedia} />}
-        {activePage === 'tvlab' && <MediaCenter location={location} connectivity={connectivity} initialType="video" items={allMedia} onUploadType={(type) => handleSelectUpload('media', type)} onWatchMedia={handleWatchMedia} />}
+        {(activePage === 'cinema' || activePage === 'tvlab') && (
+          <MediaCenter 
+            location={location} 
+            connectivity={connectivity} 
+            initialType={activePage === 'cinema' ? 'movie' : 'video'} 
+            items={allMedia} 
+            onUploadType={(type) => handleSelectUpload('media', type)} 
+            onWatchMedia={handleWatchMedia}
+            offlineCache={offlineCache}
+            onToggleCache={handleToggleCache}
+          />
+        )}
+
         {activePage === 'mall' && <EmpireMall />}
         {activePage === 'clubs' && <EmpireClubs />}
         {activePage === 'contact' && <ContactForm />}
@@ -160,6 +188,8 @@ const App: React.FC = () => {
           <MediaWatchView 
             media={currentMedia} 
             allMedia={allMedia}
+            connectivity={connectivity}
+            isCached={offlineCache.includes(currentMedia.id)}
             onSwitchMedia={(id) => setSelectedMediaId(id)}
             onBack={() => setActivePage(currentMedia.type === 'movie' ? 'cinema' : 'tvlab')} 
           />
@@ -182,8 +212,9 @@ const ContextPanel: React.FC<{
   location: ImperialLocation, 
   onSetLocation: (l: ImperialLocation) => void, 
   connectivity: ConnectivityMode, 
-  onSetConnectivity: (c: ConnectivityMode) => void 
-}> = ({ location, onSetLocation, connectivity, onSetConnectivity }) => {
+  onSetConnectivity: (c: ConnectivityMode) => void,
+  cacheCount: number
+}> = ({ location, onSetLocation, connectivity, onSetConnectivity, cacheCount }) => {
   return (
     <div className="bg-white/80 dark:bg-kingdom-plum/80 backdrop-blur-md p-3 rounded-[2.5rem] border-2 border-pink-200 dark:border-pink-900/40 shadow-2xl flex flex-col gap-4">
       <div className="flex flex-col gap-1">
@@ -204,6 +235,9 @@ const ContextPanel: React.FC<{
               <WifiOff size={14} />
             </button>
          </div>
+         {connectivity === 'offline' && (
+           <span className="text-[7px] font-bold text-pink-400 text-center mt-1 uppercase tracking-tighter">{cacheCount} Items Cached</span>
+         )}
       </div>
       
       <div className="h-px bg-pink-100 dark:bg-pink-900/30 mx-2" />
@@ -229,7 +263,7 @@ const LocationBtn: React.FC<{ active: boolean, icon: React.ReactNode, onClick: (
   </button>
 );
 
-const EmpireLiveTicker: React.FC<{ location: ImperialLocation }> = ({ location }) => {
+const EmpireLiveTicker: React.FC<{ location: ImperialLocation, connectivity: ConnectivityMode }> = ({ location, connectivity }) => {
   const messages = {
     home: "✨ THE IMPERIAL CINEMA IS NOW BROADCASTING HSM 2 IN 4K • BARKING EDITION CREDIT CARDS DROPPING IN MALL •",
     travel: "🚗 ROAMING SIGNAL: CACHED SLAY DOWNLOADED FOR THE JOURNEY • OFFLINE ARCHIVE MODE ENGAGED •",
@@ -248,12 +282,12 @@ const EmpireLiveTicker: React.FC<{ location: ImperialLocation }> = ({ location }
         location === 'arcade' ? 'bg-green-400 text-black' :
         'bg-pink-500 text-white'
       }`}>
-        {location.toUpperCase()} FEED
+        {connectivity === 'offline' ? 'OFFLINE' : location.toUpperCase()} FEED
       </div>
       <div className={`whitespace-nowrap flex animate-[marquee_30s_linear_infinite] px-4 text-xs font-medium ${
         location === 'arcade' ? 'text-green-400' : 'text-pink-400 dark:text-pink-300'
       }`}>
-        <span className="mx-8 uppercase tracking-widest">{messages[location]} {messages[location]}</span>
+        <span className="mx-8 uppercase tracking-widest">{connectivity === 'offline' ? '📡 BROADCASTING FROM LOCAL STORAGE • NO NETWORK REQUIRED • ' : ''}{messages[location]} {messages[location]}</span>
       </div>
     </div>
   );
@@ -277,9 +311,11 @@ const Hero: React.FC<{ onExplore: () => void, onShowManifesto: () => void, onUpl
 const MediaWatchView: React.FC<{ 
   media: MediaItem, 
   allMedia: MediaItem[],
+  connectivity: ConnectivityMode,
+  isCached: boolean,
   onSwitchMedia: (id: string) => void,
   onBack: () => void 
-}> = ({ media, allMedia, onSwitchMedia, onBack }) => {
+}> = ({ media, allMedia, connectivity, isCached, onSwitchMedia, onBack }) => {
   const [isPlaying, setIsPlaying] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [aspectRatio, setAspectRatio] = useState('original');
@@ -293,6 +329,8 @@ const MediaWatchView: React.FC<{
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const playPromiseRef = useRef<Promise<void> | null>(null);
+
+  const isAvailable = connectivity === 'online' || isCached;
 
   const aspectRatios = [
     { label: 'Original', value: 'original', class: 'aspect-auto' },
@@ -310,7 +348,7 @@ const MediaWatchView: React.FC<{
   const currentRatio = aspectRatios.find(r => r.value === aspectRatio) || aspectRatios[0];
 
   const togglePlay = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !isAvailable) return;
     
     if (videoRef.current.paused) {
       playPromiseRef.current = videoRef.current.play();
@@ -411,181 +449,192 @@ const MediaWatchView: React.FC<{
         
         <div className="flex items-center gap-2 bg-pink-500/10 px-6 py-3 rounded-full border border-pink-200 shadow-inner">
            <Activity size={16} className="text-pink-500 animate-pulse" />
-           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-pink-500">Live Imperial Feed: Channel {allMedia.findIndex(m => m.id === media.id) + 1}</span>
+           <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-pink-500">
+             {connectivity === 'offline' ? 'Offline Local Signal' : `Live Imperial Feed: Channel ${allMedia.findIndex(m => m.id === media.id) + 1}`}
+           </span>
         </div>
       </div>
 
-      <div 
-        ref={playerContainerRef}
-        className={`relative group bg-kingdom-dark rounded-[3rem] overflow-hidden border-[12px] border-white dark:border-pink-900/60 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] transition-all duration-700 ease-in-out ${aspectRatio.includes('Wide') || aspectRatio.includes('9') || aspectRatio === '4/1' || aspectRatio === '21/9' ? 'max-w-none w-full' : 'max-w-6xl mx-auto'}`}
-      >
-        {/* TV Guide Overlay */}
-        {showGuide && (
-          <div className="absolute inset-y-0 left-0 w-80 bg-black/90 backdrop-blur-xl z-[60] border-r border-white/10 p-8 transform transition-transform duration-500 overflow-y-auto no-scrollbar">
-            <div className="flex items-center justify-between mb-8">
-               <h3 className="text-pink-500 font-display text-2xl uppercase tracking-tighter">Imperial Guide</h3>
-               <button onClick={() => setShowGuide(false)} className="text-white/40 hover:text-white"><X size={20} /></button>
+      {!isAvailable ? (
+        <div className="bg-black/90 rounded-[3rem] aspect-video flex flex-col items-center justify-center text-center p-12 border-8 border-pink-900/60 shadow-2xl">
+           <WifiOff size={100} className="text-pink-500 mb-8 animate-pulse" />
+           <h2 className="text-4xl font-display text-pink-500 uppercase mb-4">No Imperial Signal</h2>
+           <p className="text-pink-300 text-xl max-w-md">This content is not available while roaming. Download it to your Imperial Cache while online to watch anywhere! ✨</p>
+           <button onClick={onBack} className="mt-8 px-8 py-3 bg-pink-500 text-white rounded-full font-bold uppercase tracking-widest">Back to Gallery</button>
+        </div>
+      ) : (
+        <div 
+          ref={playerContainerRef}
+          className={`relative group bg-kingdom-dark rounded-[3rem] overflow-hidden border-[12px] border-white dark:border-pink-900/60 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] transition-all duration-700 ease-in-out ${aspectRatio.includes('Wide') || aspectRatio.includes('9') || aspectRatio === '4/1' || aspectRatio === '21/9' ? 'max-w-none w-full' : 'max-w-6xl mx-auto'}`}
+        >
+          {/* TV Guide Overlay */}
+          {showGuide && (
+            <div className="absolute inset-y-0 left-0 w-80 bg-black/90 backdrop-blur-xl z-[60] border-r border-white/10 p-8 transform transition-transform duration-500 overflow-y-auto no-scrollbar">
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-pink-500 font-display text-2xl uppercase tracking-tighter">Imperial Guide</h3>
+                <button onClick={() => setShowGuide(false)} className="text-white/40 hover:text-white"><X size={20} /></button>
+              </div>
+              <div className="space-y-4">
+                {allMedia.map((m, i) => (
+                  <button 
+                    key={m.id} 
+                    onClick={() => { onSwitchMedia(m.id); setShowGuide(false); }}
+                    className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${m.id === media.id ? 'bg-pink-500/20 border-pink-500 text-pink-400' : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+                  >
+                    <div className="w-12 h-12 rounded-lg bg-pink-500/10 flex items-center justify-center font-display text-xl">{i+1}</div>
+                    <div className="flex-1 truncate">
+                        <div className="text-[10px] font-bold uppercase tracking-widest opacity-60">{m.type}</div>
+                        <div className="font-display uppercase tracking-tight truncate">{m.title}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="space-y-4">
-               {allMedia.map((m, i) => (
-                 <button 
-                  key={m.id} 
-                  onClick={() => { onSwitchMedia(m.id); setShowGuide(false); }}
-                  className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${m.id === media.id ? 'bg-pink-500/20 border-pink-500 text-pink-400' : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
-                 >
-                   <div className="w-12 h-12 rounded-lg bg-pink-500/10 flex items-center justify-center font-display text-xl">{i+1}</div>
-                   <div className="flex-1 truncate">
-                      <div className="text-[10px] font-bold uppercase tracking-widest opacity-60">{m.type}</div>
-                      <div className="font-display uppercase tracking-tight truncate">{m.title}</div>
-                   </div>
-                 </button>
-               ))}
-            </div>
-          </div>
-        )}
-
-        {/* Video Wrapper with dynamic aspect ratio */}
-        <div className={`relative w-full transition-all duration-1000 ease-in-out ${currentRatio.class} max-h-[85vh]`}>
-          {media.videoUrl ? (
-            <video 
-              ref={videoRef} 
-              src={media.videoUrl} 
-              className={`w-full h-full object-cover transition-all duration-700`} 
-              autoPlay 
-              loop 
-            />
-          ) : (
-            <img src={media.imageUrl} alt={media.title} className="w-full h-full object-cover" />
-          )}
-          
-          {/* CRT / Old School Overlays */}
-          {showStatic && (
-            <>
-              <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.08] pointer-events-none mix-blend-overlay"></div>
-              <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] bg-[length:100%_2px,3px_100%] opacity-20"></div>
-            </>
-          )}
-          
-          {/* Retro Corner Brackets */}
-          <div className="absolute top-8 left-8 w-12 h-12 border-t-2 border-l-2 border-white/20"></div>
-          <div className="absolute top-8 right-8 w-12 h-12 border-t-2 border-r-2 border-white/20"></div>
-          <div className="absolute bottom-8 left-8 w-12 h-12 border-b-2 border-l-2 border-white/20"></div>
-          <div className="absolute bottom-8 right-8 w-12 h-12 border-b-2 border-r-2 border-white/20"></div>
-
-          {/* Fullscreen Exit Overlay (Only in FS) */}
-          {isFullscreen && (
-            <button 
-              onClick={toggleFullscreen}
-              className="fixed top-8 right-8 z-[100] bg-black/60 hover:bg-black text-white p-5 rounded-full backdrop-blur-md border border-white/20 transition-all opacity-0 group-hover:opacity-100"
-            >
-              <Minimize2 size={32} />
-            </button>
           )}
 
-          {/* Bottom Control Deck */}
-          <div className="absolute inset-x-0 bottom-0 p-8 bg-gradient-to-t from-black/95 via-black/60 to-transparent translate-y-4 group-hover:translate-y-0 transition-all duration-500 opacity-0 group-hover:opacity-100 z-40">
-            <div className="flex flex-col gap-6">
-              
-              {/* Aspect Ratio & Signal Control Row */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
-                  <div className="shrink-0 flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full border border-white/20 mr-2">
-                    <Ratio size={14} className="text-pink-400" />
-                    <span className="text-[10px] font-display uppercase tracking-widest text-white/60">Imperial Lenses</span>
-                  </div>
-                  {aspectRatios.map(ratio => (
-                    <button 
-                      key={ratio.value}
-                      onClick={() => setAspectRatio(ratio.value)}
-                      className={`shrink-0 px-5 py-2 rounded-full border text-[10px] font-display uppercase tracking-widest transition-all ${aspectRatio === ratio.value ? 'bg-pink-500 border-pink-400 text-white shadow-[0_0_15px_#ec4899]' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'}`}
-                    >
-                      {ratio.label}
-                    </button>
-                  ))}
-                </div>
+          {/* Video Wrapper with dynamic aspect ratio */}
+          <div className={`relative w-full transition-all duration-1000 ease-in-out ${currentRatio.class} max-h-[85vh]`}>
+            {media.videoUrl ? (
+              <video 
+                ref={videoRef} 
+                src={media.videoUrl} 
+                className={`w-full h-full object-cover transition-all duration-700`} 
+                autoPlay 
+                loop 
+              />
+            ) : (
+              <img src={media.imageUrl} alt={media.title} className="w-full h-full object-cover" />
+            )}
+            
+            {/* CRT / Old School Overlays */}
+            {showStatic && (
+              <>
+                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.08] pointer-events-none mix-blend-overlay"></div>
+                <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.1)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] bg-[length:100%_2px,3px_100%] opacity-20"></div>
+              </>
+            )}
+            
+            {/* Retro Corner Brackets */}
+            <div className="absolute top-8 left-8 w-12 h-12 border-t-2 border-l-2 border-white/20"></div>
+            <div className="absolute top-8 right-8 w-12 h-12 border-t-2 border-r-2 border-white/20"></div>
+            <div className="absolute bottom-8 left-8 w-12 h-12 border-b-2 border-l-2 border-white/20"></div>
+            <div className="absolute bottom-8 right-8 w-12 h-12 border-b-2 border-r-2 border-white/20"></div>
+
+            {/* Fullscreen Exit Overlay (Only in FS) */}
+            {isFullscreen && (
+              <button 
+                onClick={toggleFullscreen}
+                className="fixed top-8 right-8 z-[100] bg-black/60 hover:bg-black text-white p-5 rounded-full backdrop-blur-md border border-white/20 transition-all opacity-0 group-hover:opacity-100"
+              >
+                <Minimize2 size={32} />
+              </button>
+            )}
+
+            {/* Bottom Control Deck */}
+            <div className="absolute inset-x-0 bottom-0 p-8 bg-gradient-to-t from-black/95 via-black/60 to-transparent translate-y-4 group-hover:translate-y-0 transition-all duration-500 opacity-0 group-hover:opacity-100 z-40">
+              <div className="flex flex-col gap-6">
                 
-                <button 
-                  onClick={() => setShowStatic(!showStatic)}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-full border text-[10px] font-display uppercase tracking-widest transition-all ${showStatic ? 'bg-pink-500 border-pink-500 text-white' : 'bg-white/5 border-white/10 text-white/40'}`}
-                >
-                  <Zap size={14} /> {showStatic ? 'Signal Static: ON' : 'Signal Static: OFF'}
-                </button>
-              </div>
-
-              {/* Functional Seek Bar */}
-              <div className="flex items-center gap-6">
-                <span className="text-[10px] font-mono text-pink-400 w-12 text-center">{formatTime(currentTime)}</span>
-                <div className="flex-1 relative group/seek h-8 flex items-center">
-                  <input 
-                    type="range"
-                    min="0"
-                    max={duration || 0}
-                    step="0.1"
-                    value={currentTime}
-                    onChange={handleSeek}
-                    className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-pink-500 relative z-10"
-                  />
-                  <div 
-                    className="absolute inset-y-0 left-0 bg-pink-500 shadow-[0_0_15px_#ec4899] h-1 my-auto rounded-full pointer-events-none" 
-                    style={{ width: `${(currentTime / duration) * 100}%` }}
-                  ></div>
-                </div>
-                <span className="text-[10px] font-mono text-pink-400 w-12 text-center">{formatTime(duration)}</span>
-              </div>
-
-              {/* Main Playback Controls Row */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-10">
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => switchChannel('prev')} className="text-white/40 hover:text-pink-400 transition-all transform active:scale-90" title="Prev Channel">
-                      <SkipBack size={28} fill="currentColor" />
-                    </button>
-                    <button onClick={togglePlay} className="bg-white text-pink-500 p-4 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-110 active:scale-90 transition-all">
-                      {isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" className="ml-1" />}
-                    </button>
-                    <button onClick={() => switchChannel('next')} className="text-white/40 hover:text-pink-400 transition-all transform active:scale-90" title="Next Channel">
-                      <SkipForward size={28} fill="currentColor" />
-                    </button>
+                {/* Aspect Ratio & Signal Control Row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-2">
+                    <div className="shrink-0 flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full border border-white/20 mr-2">
+                      <Ratio size={14} className="text-pink-400" />
+                      <span className="text-[10px] font-display uppercase tracking-widest text-white/60">Imperial Lenses</span>
+                    </div>
+                    {aspectRatios.map(ratio => (
+                      <button 
+                        key={ratio.value}
+                        onClick={() => setAspectRatio(ratio.value)}
+                        className={`shrink-0 px-5 py-2 rounded-full border text-[10px] font-display uppercase tracking-widest transition-all ${aspectRatio === ratio.value ? 'bg-pink-500 border-pink-400 text-white shadow-[0_0_15px_#ec4899]' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'}`}
+                      >
+                        {ratio.label}
+                      </button>
+                    ))}
                   </div>
                   
                   <button 
-                    onClick={() => setShowGuide(true)}
-                    className="flex flex-col items-center gap-1 text-white/40 hover:text-pink-400 transition-colors"
+                    onClick={() => setShowStatic(!showStatic)}
+                    className={`flex items-center gap-2 px-5 py-2 rounded-full border text-[10px] font-display uppercase tracking-widest transition-all ${showStatic ? 'bg-pink-500 border-pink-500 text-white' : 'bg-white/5 border-white/10 text-white/40'}`}
                   >
-                    <List size={24} />
-                    <span className="text-[8px] font-bold uppercase tracking-[0.3em]">Guide</span>
+                    <Zap size={14} /> {showStatic ? 'Signal Static: ON' : 'Signal Static: OFF'}
                   </button>
-
-                  <div className="hidden md:flex flex-col border-l border-white/10 pl-10">
-                    <span className="text-pink-400 font-display text-[10px] tracking-[0.2em] uppercase">Imperial CH {allMedia.findIndex(m => m.id === media.id) + 1} • {media.type}</span>
-                    <span className="text-white text-xl font-display uppercase tracking-tighter truncate max-w-[200px]">{media.title}</span>
-                  </div>
                 </div>
 
-                <div className="flex items-center gap-8">
-                   <div className="flex items-center gap-4 bg-white/10 px-6 py-3 rounded-2xl border border-white/10 group/volume">
-                      <button onClick={toggleMute} className="text-white/60 hover:text-white transition-colors">
-                        {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                {/* Functional Seek Bar */}
+                <div className="flex items-center gap-6">
+                  <span className="text-[10px] font-mono text-pink-400 w-12 text-center">{formatTime(currentTime)}</span>
+                  <div className="flex-1 relative group/seek h-8 flex items-center">
+                    <input 
+                      type="range"
+                      min="0"
+                      max={duration || 0}
+                      step="0.1"
+                      value={currentTime}
+                      onChange={handleSeek}
+                      className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-pink-500 relative z-10"
+                    />
+                    <div 
+                      className="absolute inset-y-0 left-0 bg-pink-500 shadow-[0_0_15px_#ec4899] h-1 my-auto rounded-full pointer-events-none" 
+                      style={{ width: `${(currentTime / duration) * 100}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-[10px] font-mono text-pink-400 w-12 text-center">{formatTime(duration)}</span>
+                </div>
+
+                {/* Main Playback Controls Row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-10">
+                    <div className="flex items-center gap-4">
+                      <button onClick={() => switchChannel('prev')} className="text-white/40 hover:text-pink-400 transition-all transform active:scale-90" title="Prev Channel">
+                        <SkipBack size={28} fill="currentColor" />
                       </button>
-                      <input 
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={isMuted ? 0 : volume}
-                        onChange={handleVolumeChange}
-                        className="w-24 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-pink-500"
-                      />
-                   </div>
-                   <button onClick={toggleFullscreen} className="text-white/80 hover:text-pink-400 hover:scale-110 transition-all">
-                      <Maximize size={32} />
-                   </button>
+                      <button onClick={togglePlay} className="bg-white text-pink-500 p-4 rounded-full shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:scale-110 active:scale-90 transition-all">
+                        {isPlaying ? <Pause size={36} fill="currentColor" /> : <Play size={36} fill="currentColor" className="ml-1" />}
+                      </button>
+                      <button onClick={() => switchChannel('next')} className="text-white/40 hover:text-pink-400 transition-all transform active:scale-90" title="Next Channel">
+                        <SkipForward size={28} fill="currentColor" />
+                      </button>
+                    </div>
+                    
+                    <button 
+                      onClick={() => setShowGuide(true)}
+                      className="flex flex-col items-center gap-1 text-white/40 hover:text-pink-400 transition-colors"
+                    >
+                      <List size={24} />
+                      <span className="text-[8px] font-bold uppercase tracking-[0.3em]">Guide</span>
+                    </button>
+
+                    <div className="hidden md:flex flex-col border-l border-white/10 pl-10">
+                      <span className="text-pink-400 font-display text-[10px] tracking-[0.2em] uppercase">Imperial CH {allMedia.findIndex(m => m.id === media.id) + 1} • {media.type}</span>
+                      <span className="text-white text-xl font-display uppercase tracking-tighter truncate max-w-[200px]">{media.title}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-8">
+                    <div className="flex items-center gap-4 bg-white/10 px-6 py-3 rounded-2xl border border-white/10 group/volume">
+                        <button onClick={toggleMute} className="text-white/60 hover:text-white transition-colors">
+                          {isMuted || volume === 0 ? <VolumeX size={24} /> : <Volume2 size={24} />}
+                        </button>
+                        <input 
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={isMuted ? 0 : volume}
+                          onChange={handleVolumeChange}
+                          className="w-24 h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-pink-500"
+                        />
+                    </div>
+                    <button onClick={toggleFullscreen} className="text-white/80 hover:text-pink-400 hover:scale-110 transition-all">
+                        <Maximize size={32} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
       
       {/* Description Section */}
       <div className="mt-16 grid grid-cols-1 lg:grid-cols-3 gap-12 items-start pb-20">

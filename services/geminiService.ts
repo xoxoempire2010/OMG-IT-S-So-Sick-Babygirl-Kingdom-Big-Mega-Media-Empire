@@ -1,10 +1,8 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
-// Always use process.env.API_KEY directly for initialization as per guidelines.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export async function getBabygirlMantra(mood: string): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Give me a daily mantra for someone who is feeling "${mood}". 
@@ -18,6 +16,7 @@ export async function getBabygirlMantra(mood: string): Promise<string> {
 }
 
 export async function getAestheticAdvice(question: string): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `You are the Oracle of the OMG It's So Sick Babygirl Kingdom. 
@@ -31,6 +30,7 @@ export async function getAestheticAdvice(question: string): Promise<string> {
 }
 
 export async function getAestheticAdviceWithImage(imageB64: string, question: string): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const base64Data = imageB64.includes(',') ? imageB64.split(',')[1] : imageB64;
   
   const imagePart = {

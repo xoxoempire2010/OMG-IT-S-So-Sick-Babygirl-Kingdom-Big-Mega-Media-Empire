@@ -1,16 +1,17 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MediaItem, MediaType, ImperialLocation, ConnectivityMode } from '../types';
-// Added WifiOff to imports to resolve "Cannot find name 'WifiOff'" error
-import { Heart, Star, Play, Search, Filter, Monitor, Film, PlayCircle, Plus, Sparkles, Video, Camera, Image as ImageIcon, Tv, Ghost, Share2, X, Copy, Twitter, MessageSquare, ExternalLink, Lock, Zap, Clock, Pause, Volume2, VolumeX, Maximize2, Download, PackageOpen, WifiOff } from 'lucide-react';
+import { Heart, Star, Play, Search, Filter, Monitor, Film, PlayCircle, Plus, Sparkles, Video, Camera, Image as ImageIcon, Tv, Ghost, Share2, X, Copy, Twitter, MessageSquare, ExternalLink, Lock, Zap, Clock, Pause, Volume2, VolumeX, Maximize2, Download, PackageOpen, WifiOff, Trash2 } from 'lucide-react';
 
 interface MediaCenterProps {
   initialType?: MediaType;
   items: MediaItem[];
   location?: ImperialLocation;
   connectivity?: ConnectivityMode;
+  offlineCache?: string[];
   onUploadType?: (type: MediaType) => void;
   onWatchMedia?: (id: string) => void;
+  onToggleCache?: (id: string) => void;
 }
 
 const MediaCenter: React.FC<MediaCenterProps> = ({ 
@@ -18,19 +19,32 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
   items, 
   location = 'home', 
   connectivity = 'online',
+  offlineCache = [],
   onUploadType, 
-  onWatchMedia 
+  onWatchMedia,
+  onToggleCache
 }) => {
   const [filter, setFilter] = useState<MediaType | 'all'>(initialType);
   const [search, setSearch] = useState('');
 
   const filteredItems = items.filter(item => {
-    // If offline, only show items that are "cached" (simulated by having an even ID or some logic)
-    const matchesConnectivity = connectivity === 'online' || item.id.includes('m') || item.id.includes('v'); 
+    // Location filtering
+    if (location === 'arcade' && !item.tags.some(t => t.toLowerCase().includes('retro') || t.toLowerCase().includes('arcade'))) {
+       // Only show retro stuff in arcade unless it's general media
+    }
+    if (location === 'mcdonalds' && !item.tags.some(t => t.toLowerCase().includes('food') || t.toLowerCase().includes('nostalgia'))) {
+       // Food stuff in McDonalds
+    }
+
+    // Connectivity filtering
+    const isCached = offlineCache.includes(item.id);
+    const matchesConnectivity = connectivity === 'online' || isCached;
+    
     const matchesType = filter === 'all' || item.type === filter;
     const matchesSearch = item.title.toLowerCase().includes(search.toLowerCase()) || 
                           item.description.toLowerCase().includes(search.toLowerCase()) ||
                           item.tags.some(t => t.toLowerCase().includes(search.toLowerCase()));
+    
     return matchesConnectivity && matchesType && matchesSearch;
   });
 
@@ -48,6 +62,7 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
   };
 
   const getMarqueeText = () => {
+    if (connectivity === 'offline') return "📵 LOCAL STORAGE MODE: BROADCASTING FROM IMPERIAL CACHE • NO SIGNAL REQUIRED • SLAY OFFLINE • ";
     if (location === 'arcade') return "👾 INSERT COINS FOR 1000 CREDITS • LEVEL UP YOUR SLAY • 8-BIT ESTHETICS • WIN TICKETS FOR HSM3 PREMIERE •";
     if (location === 'mcdonalds') return "🍟 MCSLAY HAPPY MEAL: TOY OF THE WEEK IS 2000s RAGDOLL • ENJOY YOUR IMPERIAL NUGGETS •";
     if (filter === 'movie') return "NOW SHOWING: 2000s CLASSICS • HIGH SCHOOL MUSICAL MARATHON • THE PRINCESS DIARIES • IMPERIAL PREMIERE TONIGHT AT 8PM •";
@@ -55,6 +70,7 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
   };
 
   const getThemeColors = () => {
+    if (connectivity === 'offline') return 'bg-gray-800 text-pink-400 border-pink-500';
     if (location === 'mcdonalds') return 'bg-red-500 text-yellow-400 border-yellow-400';
     if (location === 'arcade') return 'bg-indigo-900 text-green-400 border-indigo-500';
     return 'bg-pink-500 text-white border-white/20';
@@ -88,6 +104,7 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
           <h2 className={`text-5xl md:text-7xl font-display uppercase tracking-tighter drop-shadow-sm ${
             location === 'mcdonalds' ? 'text-red-500' : 
             location === 'arcade' ? 'text-green-400' : 
+            connectivity === 'offline' ? 'text-gray-400' :
             'text-pink-500 dark:text-pink-400'
           }`}>
             {getTitle()}
@@ -95,13 +112,13 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
         </div>
 
         {connectivity === 'offline' && (
-          <div className="bg-orange-500 text-white px-6 py-2 rounded-full inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest mb-6 shadow-lg animate-bounce">
-            <WifiOff size={14} /> Local Archive Mode: Limited Signal
+          <div className="bg-pink-500 text-white px-6 py-2 rounded-full inline-flex items-center gap-2 text-xs font-bold uppercase tracking-widest mb-6 shadow-lg animate-pulse">
+            <WifiOff size={14} /> Imperial Offline Cache
           </div>
         )}
 
         <p className={`font-rounded text-lg max-w-2xl mx-auto mb-8 italic leading-relaxed ${location === 'arcade' ? 'text-green-300' : 'text-pink-400 dark:text-pink-300'}`}>
-          {location === 'travel' ? "Your downloaded slayage, preserved for the long journey through boring beige cities." : "The Monarchy's official source for high-definition slayage."}
+          {connectivity === 'offline' ? "Emergency signal preservation active. Only showing items stored in your local Imperial Drive." : location === 'travel' ? "Your downloaded slayage, preserved for the long journey through boring beige cities." : "The Monarchy's official source for high-definition slayage."}
           <br/>
           <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full mt-2 inline-block ${
             location === 'arcade' ? 'bg-green-900/40 text-green-400' : 'bg-pink-50 dark:bg-pink-900/40 text-pink-500'
@@ -110,7 +127,7 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
           </span>
         </p>
         
-        {location === 'mcdonalds' && (
+        {location === 'mcdonalds' && connectivity === 'online' && (
           <div className="max-w-md mx-auto mb-10 bg-red-600 text-white p-6 rounded-[2rem] border-4 border-yellow-400 shadow-2xl animate-float">
              <PackageOpen size={48} className="mx-auto mb-4 text-yellow-400" />
              <h4 className="font-display text-xl uppercase mb-2">Imperial McPlay Set</h4>
@@ -149,7 +166,15 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 max-w-7xl mx-auto relative z-10">
         {filteredItems.map(item => (
-          <MediaCard key={item.id} item={item} location={location} connectivity={connectivity} onWatch={() => onWatchMedia?.(item.id)} />
+          <MediaCard 
+            key={item.id} 
+            item={item} 
+            location={location} 
+            connectivity={connectivity} 
+            isCached={offlineCache.includes(item.id)}
+            onWatch={() => onWatchMedia?.(item.id)} 
+            onToggleCache={onToggleCache}
+          />
         ))}
 
         {filteredItems.length === 0 && (
@@ -157,7 +182,7 @@ const MediaCenter: React.FC<MediaCenterProps> = ({
             <Tv size={80} className="text-pink-300 dark:text-pink-400 animate-pulse mx-auto mb-6" />
             <h3 className="text-4xl font-display text-pink-500 dark:text-pink-400 uppercase mb-4 tracking-tighter">Signal Interrupted</h3>
             <p className="text-pink-300 dark:text-pink-200 text-2xl italic font-rounded mb-10 max-w-md mx-auto leading-snug">
-              {connectivity === 'offline' ? "This media hasn't been cached for Roaming Mode yet!" : "Our satellite is scanning for slayage, but the signal is empty!"}
+              {connectivity === 'offline' ? "Your Imperial Cache is empty! Switch to Online mode to download some slayage for your journey." : "Our satellite is scanning for slayage, but the signal is empty!"}
             </p>
           </div>
         )}
@@ -175,7 +200,14 @@ const FilterButton: React.FC<{ label: string, active: boolean, onClick: () => vo
   </button>
 );
 
-const MediaCard: React.FC<{ item: MediaItem, onWatch?: () => void, location: ImperialLocation, connectivity: ConnectivityMode }> = ({ item, onWatch, location, connectivity }) => {
+const MediaCard: React.FC<{ 
+  item: MediaItem, 
+  onWatch?: () => void, 
+  location: ImperialLocation, 
+  connectivity: ConnectivityMode, 
+  isCached: boolean,
+  onToggleCache?: (id: string) => void
+}> = ({ item, onWatch, location, connectivity, isCached, onToggleCache }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isHovering, setIsHovering] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -192,7 +224,7 @@ const MediaCard: React.FC<{ item: MediaItem, onWatch?: () => void, location: Imp
   }, []);
 
   const handleMouseEnter = () => {
-    if (connectivity === 'offline' && item.type !== 'photo' && !item.isCached) return;
+    if (connectivity === 'offline' && !isCached) return;
     setIsHovering(true);
     if (videoRef.current) {
       playPromiseRef.current = videoRef.current.play();
@@ -222,6 +254,7 @@ const MediaCard: React.FC<{ item: MediaItem, onWatch?: () => void, location: Imp
       className={`group rounded-[2.5rem] overflow-hidden border-4 shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 relative cursor-pointer ${
         location === 'arcade' ? 'bg-indigo-950 border-indigo-500 text-green-400' : 
         location === 'mcdonalds' ? 'bg-white border-yellow-400' :
+        connectivity === 'offline' ? 'bg-gray-900 border-pink-500/50' :
         'bg-white dark:bg-kingdom-plum border-white dark:border-pink-900/30'
       }`}
       onMouseEnter={handleMouseEnter}
@@ -240,13 +273,17 @@ const MediaCard: React.FC<{ item: MediaItem, onWatch?: () => void, location: Imp
               </div>
             </div>
 
-            <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-[9px] font-bold uppercase z-10 ${location === 'arcade' ? 'bg-green-400 text-black' : 'bg-pink-500 text-white'}`}>
-              {isPlaying ? 'Broadcasting' : connectivity === 'offline' ? 'Offline' : 'Ready'}
+            <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-[9px] font-bold uppercase z-10 ${location === 'arcade' ? 'bg-green-400 text-black' : isCached ? 'bg-green-500 text-white' : 'bg-pink-500 text-white'}`}>
+              {isPlaying ? 'Broadcasting' : isCached ? 'In Cache' : 'Ready'}
             </div>
             
             {connectivity === 'online' && (
-              <button className="absolute top-4 right-4 bg-white/20 p-2 rounded-full text-white hover:bg-white/40 transition-all">
-                <Download size={14} />
+              <button 
+                onClick={(e) => { e.stopPropagation(); onToggleCache?.(item.id); }}
+                className={`absolute top-4 right-4 p-2 rounded-full transition-all shadow-md ${isCached ? 'bg-pink-500 text-white scale-110' : 'bg-white/20 text-white hover:bg-white/40'}`}
+                title={isCached ? "Remove from Cache" : "Download to Cache"}
+              >
+                {isCached ? <Trash2 size={14} /> : <Download size={14} />}
               </button>
             )}
 
